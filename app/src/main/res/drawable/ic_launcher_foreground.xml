@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Upward Swipe Arrow (Inside Safe Zone: Y = 25) -->
+    <path
+        android:pathData="M46,33 L54,25 L62,33"
+        android:strokeWidth="3.5"
+        android:strokeColor="#38BDF8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Steering Wheel Outer Rim (Center 54,54 | Radius 17) -->
+    <path
+        android:pathData="M54,37 A17,17 0 1,1 53.99,37"
+        android:strokeWidth="3.5"
+        android:strokeColor="#FFFFFF"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round" />
+
+    <!-- Steering Wheel Spokes -->
+    <path
+        android:pathData="M37,54 L46,54 M62,54 L71,54 M54,62 L54,71"
+        android:strokeWidth="3.0"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+
+    <!-- Steering Wheel Center Hub -->
+    <path
+        android:pathData="M54,46 A8,8 0 1,1 53.99,46"
+        android:fillColor="#2563EB" />
+
+    <!-- Play Icon inside Hub -->
+    <path
+        android:pathData="M52,50 L58,54 L52,58 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Downward Swipe Arrow (Inside Safe Zone: Y = 83) -->
+    <path
+        android:pathData="M46,75 L54,83 L62,75"
+        android:strokeWidth="3.5"
+        android:strokeColor="#38BDF8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+</vector>
