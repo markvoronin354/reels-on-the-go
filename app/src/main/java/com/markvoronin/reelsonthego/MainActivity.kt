@@ -206,7 +206,7 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Double-taps the screen center to like reels instead of scrolling back",
+                            text = "Single pressing PREV button double-taps screen to like reels instead of scrolling back",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -686,8 +686,7 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                                 "2. Enable the Bluetooth MediaSession listener.\n" +
                                 "3. Connect your phone to your car's Bluetooth.\n" +
                                 "4. Open Instagram Reels, TikTok, or YouTube Shorts.\n" +
-                                "5. Press Next button to scroll to next reel.\n" +
-                                "6. Enable 'Remap Prev Button to Double-Tap' above to like reels with your Previous steering wheel button!",
+                                "5. Press Next / Prev buttons on your steering wheel to scroll!",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                         lineHeight = 22.sp
