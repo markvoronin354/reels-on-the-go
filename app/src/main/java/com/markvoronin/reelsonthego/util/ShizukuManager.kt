@@ -76,23 +76,52 @@ object ShizukuManager {
         }
     }
 
-    fun swipeUp(width: Int, height: Int) {
+    fun swipeUp(width: Int, height: Int, durationMs: Long = 120L) {
         val startX = width / 2
         val startY = (height * 0.75f).toInt()
         val endX = width / 2
         val endY = (height * 0.25f).toInt()
-        executeSwipe(startX, startY, endX, endY, 250)
+        executeSwipe(startX, startY, endX, endY, durationMs)
     }
 
-    fun swipeDown(width: Int, height: Int) {
+    fun swipeDown(width: Int, height: Int, durationMs: Long = 120L) {
         val startX = width / 2
         val startY = (height * 0.25f).toInt()
         val endX = width / 2
         val endY = (height * 0.75f).toInt()
-        executeSwipe(startX, startY, endX, endY, 250)
+        executeSwipe(startX, startY, endX, endY, durationMs)
     }
 
-    private fun executeSwipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int) {
+    fun doubleTap(width: Int, height: Int) {
+        val x = width / 2
+        val y = height / 2
+        val command = "input tap $x $y && sleep 0.08 && input tap $x $y"
+
+        if (isGranted) {
+            Thread {
+                try {
+                    Logger.log("Executing Double Tap via Shizuku: $command")
+                    val process = execShizuku(command)
+                    if (process != null) {
+                        val exitCode = process.waitFor()
+                        Logger.log("Shizuku doubleTap completed with exit code: $exitCode")
+                    } else {
+                        execRootCmd(command)
+                    }
+                } catch (e: Exception) {
+                    Logger.log("Shizuku doubleTap error: ${e.message}", isError = true)
+                }
+            }.start()
+        } else if (isRootAvailable) {
+            Thread {
+                execRootCmd(command)
+            }.start()
+        } else {
+            Logger.log("Shizuku / Root doubleTap skipped: Permission not granted", isError = true)
+        }
+    }
+
+    private fun executeSwipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Long) {
         val command = "input swipe $startX $startY $endX $endY $durationMs"
 
         if (isGranted) {

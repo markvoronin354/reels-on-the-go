@@ -3,7 +3,6 @@ package com.markvoronin.reelsonthego.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
-import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import com.markvoronin.reelsonthego.data.PreferencesRepository
@@ -93,8 +92,13 @@ class ReelsAccessibilityService : AccessibilityService() {
             KeyEvent.KEYCODE_NAVIGATE_PREVIOUS,
             KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
             KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                Logger.log("Intercepted PREVIOUS KeyCode ${event.keyCode} -> Swiping Down")
-                swipeDown(force = true)
+                if (prefsRepository.isPrevButtonDoubleTap) {
+                    Logger.log("Intercepted PREVIOUS KeyCode ${event.keyCode} -> Double Tapping (Like)")
+                    doubleTap(force = true)
+                } else {
+                    Logger.log("Intercepted PREVIOUS KeyCode ${event.keyCode} -> Swiping Down")
+                    swipeDown(force = true)
+                }
                 true
             }
 
@@ -111,10 +115,11 @@ class ReelsAccessibilityService : AccessibilityService() {
         val displayMetrics = resources.displayMetrics
         val width = displayMetrics.widthPixels
         val height = displayMetrics.heightPixels
+        val duration = prefsRepository.swipeDurationMs
 
         // If Shizuku is available and authorized, execute via Shizuku ADB command
         if (ShizukuManager.isGranted) {
-            ShizukuManager.swipeUp(width, height)
+            ShizukuManager.swipeUp(width, height, duration)
         }
 
         val startX = width / 2f
@@ -122,7 +127,7 @@ class ReelsAccessibilityService : AccessibilityService() {
         val endX = width / 2f
         val endY = height * 0.25f
 
-        dispatchSwipeGesture(startX, startY, endX, endY, 250L)
+        dispatchSwipeGesture(startX, startY, endX, endY, duration)
     }
 
     fun swipeDown(force: Boolean = false) {
@@ -134,10 +139,11 @@ class ReelsAccessibilityService : AccessibilityService() {
         val displayMetrics = resources.displayMetrics
         val width = displayMetrics.widthPixels
         val height = displayMetrics.heightPixels
+        val duration = prefsRepository.swipeDurationMs
 
         // If Shizuku is available and authorized, execute via Shizuku ADB command
         if (ShizukuManager.isGranted) {
-            ShizukuManager.swipeDown(width, height)
+            ShizukuManager.swipeDown(width, height, duration)
         }
 
         val startX = width / 2f
@@ -145,7 +151,52 @@ class ReelsAccessibilityService : AccessibilityService() {
         val endX = width / 2f
         val endY = height * 0.75f
 
-        dispatchSwipeGesture(startX, startY, endX, endY, 250L)
+        dispatchSwipeGesture(startX, startY, endX, endY, duration)
+    }
+
+    fun doubleTap(force: Boolean = false) {
+        if (!force && !prefsRepository.isPackageEnabled(currentPackageName)) {
+            Logger.log("doubleTap ignored: package $currentPackageName not enabled")
+            return
+        }
+
+        val displayMetrics = resources.displayMetrics
+        val width = displayMetrics.widthPixels
+        val height = displayMetrics.heightPixels
+
+        // If Shizuku is available and authorized, execute via Shizuku ADB command
+        if (ShizukuManager.isGranted) {
+            ShizukuManager.doubleTap(width, height)
+        }
+
+        val centerX = width / 2f
+        val centerY = height / 2f
+
+        val tapPath = Path().apply {
+            moveTo(centerX, centerY)
+        }
+
+        val tap1 = GestureDescription.StrokeDescription(tapPath, 0L, 50L)
+        val tap2 = GestureDescription.StrokeDescription(tapPath, 100L, 50L)
+
+        val gesture = GestureDescription.Builder()
+            .addStroke(tap1)
+            .addStroke(tap2)
+            .build()
+
+        val success = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                super.onCompleted(gestureDescription)
+                Logger.log("Accessibility Double Tap (Like) completed successfully")
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                Logger.log("Accessibility Double Tap cancelled", isError = true)
+            }
+        }, null)
+
+        Logger.log("Dispatched Accessibility Double Tap: success=$success")
     }
 
     private fun dispatchSwipeGesture(
@@ -166,7 +217,7 @@ class ReelsAccessibilityService : AccessibilityService() {
         val success = dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 super.onCompleted(gestureDescription)
-                Logger.log("Accessibility Swipe completed successfully")
+                Logger.log("Accessibility Swipe completed successfully (${durationMs}ms)")
             }
 
             override fun onCancelled(gestureDescription: GestureDescription?) {
@@ -175,12 +226,10 @@ class ReelsAccessibilityService : AccessibilityService() {
             }
         }, null)
 
-        Logger.log("Dispatched Accessibility Swipe: success=$success")
+        Logger.log("Dispatched Accessibility Swipe (${durationMs}ms): success=$success")
     }
 
     companion object {
-        private const val TAG = "ReelsAccessibility"
-
         @Volatile
         private var instance: WeakReference<ReelsAccessibilityService>? = null
 

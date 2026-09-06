@@ -25,8 +25,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -34,6 +32,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -46,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -96,6 +96,8 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
     var isMediaServiceRunning by remember { mutableStateOf(MediaButtonService.isRunning) }
     var isMasterEnabled by remember { mutableStateOf(prefsRepository.isServiceEnabled) }
     var isGlobalSwipeEnabled by remember { mutableStateOf(prefsRepository.isGlobalSwipeEnabled) }
+    var isPrevDoubleTap by remember { mutableStateOf(prefsRepository.isPrevButtonDoubleTap) }
+    var selectedSwipeDuration by remember { mutableLongStateOf(prefsRepository.swipeDurationMs) }
     var enabledPackages by remember { mutableStateOf(prefsRepository.enabledPackages) }
 
     var shizukuAvailable by remember { mutableStateOf(ShizukuManager.isAvailable) }
@@ -182,6 +184,82 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                             prefsRepository.isServiceEnabled = checked
                         }
                     )
+                }
+            }
+
+            // Remap Previous Button Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Remap Prev Button to Double-Tap (Like)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Double-taps the screen center to like reels instead of scrolling back",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isPrevDoubleTap,
+                        onCheckedChange = { checked ->
+                            isPrevDoubleTap = checked
+                            prefsRepository.isPrevButtonDoubleTap = checked
+                        }
+                    )
+                }
+            }
+
+            // Swipe Speed Selection Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Swipe Speed / Duration",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Adjust how fast the scroll gesture fling executes",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        PreferencesRepository.SWIPE_SPEED_OPTIONS.forEach { option ->
+                            FilterChip(
+                                selected = selectedSwipeDuration == option.durationMs,
+                                onClick = {
+                                    selectedSwipeDuration = option.durationMs
+                                    prefsRepository.swipeDurationMs = option.durationMs
+                                    Toast.makeText(context, "Set swipe duration to ${option.durationMs}ms", Toast.LENGTH_SHORT).show()
+                                },
+                                label = { Text(option.label, fontSize = 11.sp) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -515,46 +593,69 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                val service = ReelsAccessibilityService.getInstance()
-                                if (service != null) {
-                                    service.swipeUp(force = true)
-                                    Toast.makeText(context, "Dispatched Swipe Up (Next)", Toast.LENGTH_SHORT).show()
-                                } else if (ShizukuManager.isGranted) {
-                                    val displayMetrics = context.resources.displayMetrics
-                                    ShizukuManager.swipeUp(displayMetrics.widthPixels, displayMetrics.heightPixels)
-                                    Toast.makeText(context, "Dispatched Swipe Up via Shizuku", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "Enable Accessibility or Shizuku first!", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Swipe Up (Next)")
+                            OutlinedButton(
+                                onClick = {
+                                    val service = ReelsAccessibilityService.getInstance()
+                                    if (service != null) {
+                                        service.swipeUp(force = true)
+                                        Toast.makeText(context, "Dispatched Swipe Up (Next)", Toast.LENGTH_SHORT).show()
+                                    } else if (ShizukuManager.isGranted) {
+                                        val displayMetrics = context.resources.displayMetrics
+                                        ShizukuManager.swipeUp(displayMetrics.widthPixels, displayMetrics.heightPixels, selectedSwipeDuration)
+                                        Toast.makeText(context, "Dispatched Swipe Up via Shizuku", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Enable Accessibility or Shizuku first!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Swipe Up (Next)")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    val service = ReelsAccessibilityService.getInstance()
+                                    if (service != null) {
+                                        service.swipeDown(force = true)
+                                        Toast.makeText(context, "Dispatched Swipe Down (Prev)", Toast.LENGTH_SHORT).show()
+                                    } else if (ShizukuManager.isGranted) {
+                                        val displayMetrics = context.resources.displayMetrics
+                                        ShizukuManager.swipeDown(displayMetrics.widthPixels, displayMetrics.heightPixels, selectedSwipeDuration)
+                                        Toast.makeText(context, "Dispatched Swipe Down via Shizuku", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Enable Accessibility or Shizuku first!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Swipe Down (Prev)")
+                            }
                         }
 
                         OutlinedButton(
                             onClick = {
                                 val service = ReelsAccessibilityService.getInstance()
                                 if (service != null) {
-                                    service.swipeDown(force = true)
-                                    Toast.makeText(context, "Dispatched Swipe Down (Prev)", Toast.LENGTH_SHORT).show()
+                                    service.doubleTap(force = true)
+                                    Toast.makeText(context, "Dispatched Double Tap (Like)", Toast.LENGTH_SHORT).show()
                                 } else if (ShizukuManager.isGranted) {
                                     val displayMetrics = context.resources.displayMetrics
-                                    ShizukuManager.swipeDown(displayMetrics.widthPixels, displayMetrics.heightPixels)
-                                    Toast.makeText(context, "Dispatched Swipe Down via Shizuku", Toast.LENGTH_SHORT).show()
+                                    ShizukuManager.doubleTap(displayMetrics.widthPixels, displayMetrics.heightPixels)
+                                    Toast.makeText(context, "Dispatched Double Tap via Shizuku", Toast.LENGTH_SHORT).show()
                                 } else {
                                     Toast.makeText(context, "Enable Accessibility or Shizuku first!", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Swipe Down (Prev)")
+                            Text("Double Tap (Like Reel)")
                         }
                     }
                 }
@@ -585,8 +686,8 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                                 "2. Enable the Bluetooth MediaSession listener.\n" +
                                 "3. Connect your phone to your car's Bluetooth.\n" +
                                 "4. Open Instagram Reels, TikTok, or YouTube Shorts.\n" +
-                                "5. Press Next / Prev buttons on your steering wheel to scroll!\n" +
-                                "6. Look at the Live Console to see real-time button keycodes.",
+                                "5. Press Next button to scroll to next reel.\n" +
+                                "6. Enable 'Remap Prev Button to Double-Tap' above to like reels with your Previous steering wheel button!",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                         lineHeight = 22.sp

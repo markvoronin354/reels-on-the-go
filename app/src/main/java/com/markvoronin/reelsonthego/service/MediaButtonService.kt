@@ -5,13 +5,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
-import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.AudioTrack
 import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
@@ -21,6 +22,7 @@ import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import com.markvoronin.reelsonthego.MainActivity
 import com.markvoronin.reelsonthego.R
+import com.markvoronin.reelsonthego.data.PreferencesRepository
 import com.markvoronin.reelsonthego.util.Logger
 
 class MediaButtonService : Service() {
@@ -28,16 +30,60 @@ class MediaButtonService : Service() {
     private var mediaSession: MediaSession? = null
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
-    private var silentAudioTrack: AudioTrack? = null
+    private var isReceiverRegistered = false
+    private lateinit var prefsRepository: PreferencesRepository
+
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                    Logger.log("Bluetooth device connected (Car Head Unit)")
+                    activateMediaSession()
+                }
+                BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                    Logger.log("Bluetooth device disconnected")
+                    deactivateMediaSession()
+                }
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
-        Logger.log("MediaButtonService created")
+        Logger.log("MediaButtonService created (Battery optimized)")
+        prefsRepository = PreferencesRepository(this)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
         initMediaSession()
-        requestAudioFocus()
-        startSilentAudio()
+        registerBluetoothReceiver()
+        activateMediaSession()
+    }
+
+    private fun registerBluetoothReceiver() {
+        if (!isReceiverRegistered) {
+            val filter = IntentFilter().apply {
+                addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+                addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(bluetoothReceiver, filter, RECEIVER_EXPORTED)
+            } else {
+                registerReceiver(bluetoothReceiver, filter)
+            }
+            isReceiverRegistered = true
+            Logger.log("Registered Bluetooth connection receiver")
+        }
+    }
+
+    private fun unregisterBluetoothReceiver() {
+        if (isReceiverRegistered) {
+            try {
+                unregisterReceiver(bluetoothReceiver)
+            } catch (e: Exception) {
+                Logger.log("Error unregistering Bluetooth receiver: ${e.message}", isError = true)
+            }
+            isReceiverRegistered = false
+        }
     }
 
     private fun initMediaSession() {
@@ -55,20 +101,6 @@ class MediaButtonService : Service() {
 
             setMetadata(metadata)
 
-            val state = PlaybackState.Builder()
-                .setActions(
-                    PlaybackState.ACTION_PLAY or
-                            PlaybackState.ACTION_PAUSE or
-                            PlaybackState.ACTION_SKIP_TO_NEXT or
-                            PlaybackState.ACTION_SKIP_TO_PREVIOUS or
-                            PlaybackState.ACTION_FAST_FORWARD or
-                            PlaybackState.ACTION_REWIND
-                )
-                .setState(PlaybackState.STATE_PLAYING, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f)
-                .build()
-
-            setPlaybackState(state)
-
             setCallback(object : MediaSession.Callback() {
                 override fun onSkipToNext() {
                     Logger.log("MediaSession: onSkipToNext() received -> Swiping Up")
@@ -76,8 +108,13 @@ class MediaButtonService : Service() {
                 }
 
                 override fun onSkipToPrevious() {
-                    Logger.log("MediaSession: onSkipToPrevious() received -> Swiping Down")
-                    ReelsAccessibilityService.getInstance()?.swipeDown(force = true)
+                    if (prefsRepository.isPrevButtonDoubleTap) {
+                        Logger.log("MediaSession: onSkipToPrevious() received -> Double Tapping (Like)")
+                        ReelsAccessibilityService.getInstance()?.doubleTap(force = true)
+                    } else {
+                        Logger.log("MediaSession: onSkipToPrevious() received -> Swiping Down")
+                        ReelsAccessibilityService.getInstance()?.swipeDown(force = true)
+                    }
                 }
 
                 override fun onFastForward() {
@@ -86,8 +123,13 @@ class MediaButtonService : Service() {
                 }
 
                 override fun onRewind() {
-                    Logger.log("MediaSession: onRewind() received -> Swiping Down")
-                    ReelsAccessibilityService.getInstance()?.swipeDown(force = true)
+                    if (prefsRepository.isPrevButtonDoubleTap) {
+                        Logger.log("MediaSession: onRewind() received -> Double Tapping (Like)")
+                        ReelsAccessibilityService.getInstance()?.doubleTap(force = true)
+                    } else {
+                        Logger.log("MediaSession: onRewind() received -> Swiping Down")
+                        ReelsAccessibilityService.getInstance()?.swipeDown(force = true)
+                    }
                 }
 
                 override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
@@ -114,7 +156,11 @@ class MediaButtonService : Service() {
                             KeyEvent.KEYCODE_NAVIGATE_PREVIOUS,
                             KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
                             KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                                ReelsAccessibilityService.getInstance()?.swipeDown(force = true)
+                                if (prefsRepository.isPrevButtonDoubleTap) {
+                                    ReelsAccessibilityService.getInstance()?.doubleTap(force = true)
+                                } else {
+                                    ReelsAccessibilityService.getInstance()?.swipeDown(force = true)
+                                }
                                 return true
                             }
                         }
@@ -122,15 +168,48 @@ class MediaButtonService : Service() {
                     return super.onMediaButtonEvent(mediaButtonIntent)
                 }
             })
+        }
+    }
 
+    private fun activateMediaSession() {
+        requestAudioFocus()
+        val state = PlaybackState.Builder()
+            .setActions(
+                PlaybackState.ACTION_PLAY or
+                        PlaybackState.ACTION_PAUSE or
+                        PlaybackState.ACTION_SKIP_TO_NEXT or
+                        PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackState.ACTION_FAST_FORWARD or
+                        PlaybackState.ACTION_REWIND
+            )
+            .setState(PlaybackState.STATE_PLAYING, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f)
+            .build()
+
+        mediaSession?.apply {
+            setPlaybackState(state)
             isActive = true
         }
+        Logger.log("Activated MediaSession (Playing State)")
+    }
+
+    private fun deactivateMediaSession() {
+        abandonAudioFocus()
+        val state = PlaybackState.Builder()
+            .setActions(0)
+            .setState(PlaybackState.STATE_PAUSED, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 0.0f)
+            .build()
+
+        mediaSession?.apply {
+            setPlaybackState(state)
+            isActive = false
+        }
+        Logger.log("Deactivated MediaSession (Paused/Idle State - Zero Wakelock)")
     }
 
     private fun requestAudioFocus() {
         val am = audioManager ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -145,13 +224,13 @@ class MediaButtonService : Service() {
 
             audioFocusRequest = focusRequest
             val res = am.requestAudioFocus(focusRequest)
-            Logger.log("Requested Audio Focus (API 26+): result=$res")
+            Logger.log("Requested Audio Focus (Transient May Duck): result=$res")
         } else {
             @Suppress("DEPRECATION")
             val res = am.requestAudioFocus(
                 { focus -> Logger.log("AudioFocus change: $focus") },
                 AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
             )
             Logger.log("Requested Audio Focus: result=$res")
         }
@@ -167,59 +246,10 @@ class MediaButtonService : Service() {
         }
     }
 
-    private fun startSilentAudio() {
-        try {
-            val sampleRate = 44100
-            val bufferSize = AudioTrack.getMinBufferSize(
-                sampleRate,
-                AudioFormat.CHANNEL_OUT_STEREO,
-                AudioFormat.ENCODING_PCM_16BIT
-            )
-
-            val audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build()
-
-            val audioFormat = AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(sampleRate)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-                .build()
-
-            silentAudioTrack = AudioTrack(
-                audioAttributes,
-                audioFormat,
-                bufferSize,
-                AudioTrack.MODE_STATIC,
-                AudioManager.AUDIO_SESSION_ID_GENERATE
-            ).apply {
-                val silentBuffer = ByteArray(bufferSize)
-                write(silentBuffer, 0, silentBuffer.size)
-                setLoopPoints(0, silentBuffer.size / 4, -1)
-                play()
-            }
-            Logger.log("Started silent audio loop for Bluetooth media focus")
-        } catch (e: Exception) {
-            Logger.log("Error starting silent audio track: ${e.message}", isError = true)
-        }
-    }
-
-    private fun stopSilentAudio() {
-        try {
-            silentAudioTrack?.apply {
-                stop()
-                release()
-            }
-            silentAudioTrack = null
-        } catch (e: Exception) {
-            Logger.log("Error stopping silent audio track: ${e.message}", isError = true)
-        }
-    }
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         if (action == ACTION_STOP) {
+            deactivateMediaSession()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -232,12 +262,9 @@ class MediaButtonService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopSilentAudio()
-        abandonAudioFocus()
-        mediaSession?.apply {
-            isActive = false
-            release()
-        }
+        unregisterBluetoothReceiver()
+        deactivateMediaSession()
+        mediaSession?.release()
         mediaSession = null
         isRunning = false
         Logger.log("MediaButtonService destroyed")

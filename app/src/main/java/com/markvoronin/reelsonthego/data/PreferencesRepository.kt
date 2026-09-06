@@ -15,6 +15,14 @@ class PreferencesRepository(context: Context) {
         get() = prefs.getBoolean(KEY_GLOBAL_SWIPE, false)
         set(value) = prefs.edit().putBoolean(KEY_GLOBAL_SWIPE, value).apply()
 
+    var isPrevButtonDoubleTap: Boolean
+        get() = prefs.getBoolean(KEY_PREV_DOUBLE_TAP, false)
+        set(value) = prefs.edit().putBoolean(KEY_PREV_DOUBLE_TAP, value).apply()
+
+    var swipeDurationMs: Long
+        get() = prefs.getLong(KEY_SWIPE_DURATION, DEFAULT_SWIPE_DURATION_MS)
+        set(value) = prefs.edit().putLong(KEY_SWIPE_DURATION, value).apply()
+
     var enabledPackages: Set<String>
         get() = prefs.getStringSet(KEY_ENABLED_PACKAGES, DEFAULT_PACKAGES) ?: DEFAULT_PACKAGES
         set(value) = prefs.edit().putStringSet(KEY_ENABLED_PACKAGES, value).apply()
@@ -38,7 +46,18 @@ class PreferencesRepository(context: Context) {
         private const val PREFS_NAME = "reels_control_prefs"
         private const val KEY_SERVICE_ENABLED = "key_service_enabled"
         private const val KEY_GLOBAL_SWIPE = "key_global_swipe"
+        private const val KEY_PREV_DOUBLE_TAP = "key_prev_double_tap"
+        private const val KEY_SWIPE_DURATION = "key_swipe_duration"
         private const val KEY_ENABLED_PACKAGES = "key_enabled_packages"
+
+        const val DEFAULT_SWIPE_DURATION_MS = 120L // Fast 120ms snap scroll
+
+        val SWIPE_SPEED_OPTIONS = listOf(
+            SwipeSpeedOption("Ultra Fast (80 ms)", 80L),
+            SwipeSpeedOption("Fast (120 ms)", 120L),
+            SwipeSpeedOption("Medium (180 ms)", 180L),
+            SwipeSpeedOption("Normal (250 ms)", 250L)
+        )
 
         val DEFAULT_PACKAGES = setOf(
             "com.instagram.android",        // Instagram
@@ -65,4 +84,9 @@ class PreferencesRepository(context: Context) {
 data class SupportedApp(
     val displayName: String,
     val packageName: String
+)
+
+data class SwipeSpeedOption(
+    val label: String,
+    val durationMs: Long
 )
