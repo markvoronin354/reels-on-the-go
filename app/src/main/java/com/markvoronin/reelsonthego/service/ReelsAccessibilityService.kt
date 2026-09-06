@@ -117,9 +117,10 @@ class ReelsAccessibilityService : AccessibilityService() {
         val height = displayMetrics.heightPixels
         val duration = prefsRepository.swipeDurationMs
 
-        // If Shizuku is available and authorized, execute via Shizuku ADB command
+        // If Shizuku is available and authorized, execute via Shizuku ADB command and return
         if (ShizukuManager.isGranted) {
             ShizukuManager.swipeUp(width, height, duration)
+            return
         }
 
         val startX = width / 2f
@@ -141,9 +142,10 @@ class ReelsAccessibilityService : AccessibilityService() {
         val height = displayMetrics.heightPixels
         val duration = prefsRepository.swipeDurationMs
 
-        // If Shizuku is available and authorized, execute via Shizuku ADB command
+        // If Shizuku is available and authorized, execute via Shizuku ADB command and return
         if (ShizukuManager.isGranted) {
             ShizukuManager.swipeDown(width, height, duration)
+            return
         }
 
         val startX = width / 2f
@@ -164,9 +166,10 @@ class ReelsAccessibilityService : AccessibilityService() {
         val width = displayMetrics.widthPixels
         val height = displayMetrics.heightPixels
 
-        // If Shizuku is available and authorized, execute via Shizuku ADB command
+        // If Shizuku is available and authorized, execute via Shizuku ADB command and return
         if (ShizukuManager.isGranted) {
             ShizukuManager.doubleTap(width, height)
+            return
         }
 
         val centerX = width / 2f

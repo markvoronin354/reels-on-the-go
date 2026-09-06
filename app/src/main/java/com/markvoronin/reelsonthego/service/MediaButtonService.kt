@@ -12,7 +12,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
+import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioTrack
 import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
@@ -30,6 +32,7 @@ class MediaButtonService : Service() {
     private var mediaSession: MediaSession? = null
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
+    private var silentAudioTrack: AudioTrack? = null
     private var isReceiverRegistered = false
     private lateinit var prefsRepository: PreferencesRepository
 
@@ -50,7 +53,7 @@ class MediaButtonService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Logger.log("MediaButtonService created (Battery optimized)")
+        Logger.log("MediaButtonService created")
         prefsRepository = PreferencesRepository(this)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
@@ -173,6 +176,8 @@ class MediaButtonService : Service() {
 
     private fun activateMediaSession() {
         requestAudioFocus()
+        startSilentAudio()
+
         val state = PlaybackState.Builder()
             .setActions(
                 PlaybackState.ACTION_PLAY or
@@ -189,10 +194,11 @@ class MediaButtonService : Service() {
             setPlaybackState(state)
             isActive = true
         }
-        Logger.log("Activated MediaSession (Playing State)")
+        Logger.log("Activated MediaSession (Playing State + AudioFocus)")
     }
 
     private fun deactivateMediaSession() {
+        stopSilentAudio()
         abandonAudioFocus()
         val state = PlaybackState.Builder()
             .setActions(0)
@@ -203,13 +209,13 @@ class MediaButtonService : Service() {
             setPlaybackState(state)
             isActive = false
         }
-        Logger.log("Deactivated MediaSession (Paused/Idle State - Zero Wakelock)")
+        Logger.log("Deactivated MediaSession (Paused/Idle State)")
     }
 
     private fun requestAudioFocus() {
         val am = audioManager ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -224,13 +230,13 @@ class MediaButtonService : Service() {
 
             audioFocusRequest = focusRequest
             val res = am.requestAudioFocus(focusRequest)
-            Logger.log("Requested Audio Focus (Transient May Duck): result=$res")
+            Logger.log("Requested Audio Focus (AUDIOFOCUS_GAIN): result=$res")
         } else {
             @Suppress("DEPRECATION")
             val res = am.requestAudioFocus(
                 { focus -> Logger.log("AudioFocus change: $focus") },
                 AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                AudioManager.AUDIOFOCUS_GAIN
             )
             Logger.log("Requested Audio Focus: result=$res")
         }
@@ -246,6 +252,57 @@ class MediaButtonService : Service() {
         }
     }
 
+    private fun startSilentAudio() {
+        if (silentAudioTrack != null) return
+        try {
+            val sampleRate = 44100
+            val bufferSize = AudioTrack.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_STEREO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
+
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+
+            val audioFormat = AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(sampleRate)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                .build()
+
+            silentAudioTrack = AudioTrack(
+                audioAttributes,
+                audioFormat,
+                bufferSize,
+                AudioTrack.MODE_STATIC,
+                AudioManager.AUDIO_SESSION_ID_GENERATE
+            ).apply {
+                val silentBuffer = ByteArray(bufferSize)
+                write(silentBuffer, 0, silentBuffer.size)
+                setLoopPoints(0, silentBuffer.size / 4, -1)
+                play()
+            }
+            Logger.log("Started silent AudioTrack for car Bluetooth focus")
+        } catch (e: Exception) {
+            Logger.log("Error starting silent audio track: ${e.message}", isError = true)
+        }
+    }
+
+    private fun stopSilentAudio() {
+        try {
+            silentAudioTrack?.apply {
+                stop()
+                release()
+            }
+            silentAudioTrack = null
+        } catch (e: Exception) {
+            Logger.log("Error stopping silent audio track: ${e.message}", isError = true)
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         if (action == ACTION_STOP) {
@@ -256,6 +313,7 @@ class MediaButtonService : Service() {
         }
 
         startForeground(NOTIFICATION_ID, buildNotification())
+        activateMediaSession()
         isRunning = true
         return START_STICKY
     }
