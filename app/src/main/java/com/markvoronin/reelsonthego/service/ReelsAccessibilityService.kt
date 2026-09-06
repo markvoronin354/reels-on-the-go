@@ -42,7 +42,7 @@ class ReelsAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 val pkg = event.packageName?.toString()
-                if (!pkg.isNullOrEmpty() && pkg != "android" && pkg != "com.android.systemui") {
+                if (!pkg.isNullOrEmpty() && isRealAppPackage(pkg)) {
                     if (currentPackageName != pkg) {
                         currentPackageName = pkg
                         Logger.log("Foreground App: $currentPackageName")
@@ -70,7 +70,7 @@ class ReelsAccessibilityService : AccessibilityService() {
             return super.onKeyEvent(event)
         }
 
-        val isTargetAppActive = prefsRepository.isPackageEnabled(currentPackageName)
+        val isTargetAppActive = isAppTargeted(force = false)
 
         if (!isTargetAppActive) {
             return super.onKeyEvent(event)
@@ -106,9 +106,45 @@ class ReelsAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun isRealAppPackage(pkg: String): Boolean {
+        val systemPackages = setOf(
+            "android",
+            "com.android.systemui",
+            "com.google.android.inputmethod.latin",
+            "com.samsung.android.honeyboard",
+            "com.sec.android.inputmethod",
+            "com.google.android.gms",
+            "com.google.android.permissioncontroller",
+            "com.android.permissioncontroller",
+            "com.google.android.setupwizard"
+        )
+        return !systemPackages.contains(pkg) && !pkg.contains("keyboard") && !pkg.contains("inputmethod")
+    }
+
+    private fun isAppTargeted(force: Boolean): Boolean {
+        if (prefsRepository.isGlobalSwipeEnabled) return true
+
+        // Dynamically query active window package if available
+        val rootPkg = try {
+            rootInActiveWindow?.packageName?.toString()
+        } catch (e: Exception) {
+            null
+        }
+
+        if (!rootPkg.isNullOrEmpty() && isRealAppPackage(rootPkg)) {
+            if (currentPackageName != rootPkg) {
+                currentPackageName = rootPkg
+                Logger.log("Active Window Package: $currentPackageName")
+            }
+        }
+
+        if (force && currentPackageName == packageName) return true
+        return prefsRepository.isPackageEnabled(currentPackageName)
+    }
+
     fun swipeUp(force: Boolean = false) {
-        if (!force && !prefsRepository.isPackageEnabled(currentPackageName)) {
-            Logger.log("swipeUp ignored: package $currentPackageName not enabled")
+        if (!isAppTargeted(force)) {
+            Logger.log("swipeUp ignored: $currentPackageName is not an enabled target app")
             return
         }
 
@@ -132,8 +168,8 @@ class ReelsAccessibilityService : AccessibilityService() {
     }
 
     fun swipeDown(force: Boolean = false) {
-        if (!force && !prefsRepository.isPackageEnabled(currentPackageName)) {
-            Logger.log("swipeDown ignored: package $currentPackageName not enabled")
+        if (!isAppTargeted(force)) {
+            Logger.log("swipeDown ignored: $currentPackageName is not an enabled target app")
             return
         }
 
@@ -157,8 +193,8 @@ class ReelsAccessibilityService : AccessibilityService() {
     }
 
     fun doubleTap(force: Boolean = false) {
-        if (!force && !prefsRepository.isPackageEnabled(currentPackageName)) {
-            Logger.log("doubleTap ignored: package $currentPackageName not enabled")
+        if (!isAppTargeted(force)) {
+            Logger.log("doubleTap ignored: $currentPackageName is not an enabled target app")
             return
         }
 
