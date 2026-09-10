@@ -42,14 +42,48 @@ class ReelsAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 val pkg = event.packageName?.toString()
-                if (!pkg.isNullOrEmpty() && isRealAppPackage(pkg)) {
+                if (!pkg.isNullOrEmpty() && !isTransientSystemPackage(pkg)) {
                     if (currentPackageName != pkg) {
                         currentPackageName = pkg
-                        Logger.log("Foreground App: $currentPackageName")
+                        Logger.log("Foreground App Changed: $currentPackageName")
+                        handleAppLifecycleChange(currentPackageName)
                     }
                 }
             }
         }
+    }
+
+    private fun handleAppLifecycleChange(packageName: String) {
+        if (!prefsRepository.isServiceEnabled) return
+
+        val isTargetApp = prefsRepository.isPackageEnabled(packageName)
+
+        if (isTargetApp) {
+            if (!MediaButtonService.isRunning) {
+                Logger.log("Target app opened ($packageName) -> Starting MediaButtonService")
+                MediaButtonService.startService(this)
+            }
+        } else {
+            if (MediaButtonService.isRunning) {
+                Logger.log("Left target app ($packageName) -> Stopping MediaButtonService")
+                MediaButtonService.stopService(this)
+            }
+        }
+    }
+
+    private fun isTransientSystemPackage(pkg: String): Boolean {
+        val systemPackages = setOf(
+            "android",
+            "com.android.systemui",
+            "com.google.android.inputmethod.latin",
+            "com.samsung.android.honeyboard",
+            "com.sec.android.inputmethod",
+            "com.google.android.gms",
+            "com.google.android.permissioncontroller",
+            "com.android.permissioncontroller",
+            "com.google.android.setupwizard"
+        )
+        return systemPackages.contains(pkg) || pkg.contains("keyboard") || pkg.contains("inputmethod")
     }
 
     override fun onInterrupt() {
@@ -106,35 +140,20 @@ class ReelsAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun isRealAppPackage(pkg: String): Boolean {
-        val systemPackages = setOf(
-            "android",
-            "com.android.systemui",
-            "com.google.android.inputmethod.latin",
-            "com.samsung.android.honeyboard",
-            "com.sec.android.inputmethod",
-            "com.google.android.gms",
-            "com.google.android.permissioncontroller",
-            "com.android.permissioncontroller",
-            "com.google.android.setupwizard"
-        )
-        return !systemPackages.contains(pkg) && !pkg.contains("keyboard") && !pkg.contains("inputmethod")
-    }
-
     private fun isAppTargeted(force: Boolean): Boolean {
         if (prefsRepository.isGlobalSwipeEnabled) return true
 
-        // Dynamically query active window package if available
         val rootPkg = try {
             rootInActiveWindow?.packageName?.toString()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
 
-        if (!rootPkg.isNullOrEmpty() && isRealAppPackage(rootPkg)) {
+        if (!rootPkg.isNullOrEmpty() && !isTransientSystemPackage(rootPkg)) {
             if (currentPackageName != rootPkg) {
                 currentPackageName = rootPkg
                 Logger.log("Active Window Package: $currentPackageName")
+                handleAppLifecycleChange(currentPackageName)
             }
         }
 
@@ -153,7 +172,6 @@ class ReelsAccessibilityService : AccessibilityService() {
         val height = displayMetrics.heightPixels
         val duration = prefsRepository.swipeDurationMs
 
-        // If Shizuku is available and authorized, execute via Shizuku ADB command and return
         if (ShizukuManager.isGranted) {
             ShizukuManager.swipeUp(width, height, duration)
             return
@@ -178,7 +196,6 @@ class ReelsAccessibilityService : AccessibilityService() {
         val height = displayMetrics.heightPixels
         val duration = prefsRepository.swipeDurationMs
 
-        // If Shizuku is available and authorized, execute via Shizuku ADB command and return
         if (ShizukuManager.isGranted) {
             ShizukuManager.swipeDown(width, height, duration)
             return
@@ -202,7 +219,6 @@ class ReelsAccessibilityService : AccessibilityService() {
         val width = displayMetrics.widthPixels
         val height = displayMetrics.heightPixels
 
-        // If Shizuku is available and authorized, execute via Shizuku ADB command and return
         if (ShizukuManager.isGranted) {
             ShizukuManager.doubleTap(width, height)
             return

@@ -26,6 +26,7 @@ import com.markvoronin.reelsonthego.MainActivity
 import com.markvoronin.reelsonthego.R
 import com.markvoronin.reelsonthego.data.PreferencesRepository
 import com.markvoronin.reelsonthego.util.Logger
+import com.markvoronin.reelsonthego.util.ShizukuManager
 
 class MediaButtonService : Service() {
 
@@ -36,16 +37,16 @@ class MediaButtonService : Service() {
     private var isReceiverRegistered = false
     private lateinit var prefsRepository: PreferencesRepository
 
-    private val bluetoothReceiver = object : BroadcastReceiver() {
+    private val systemReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                    Logger.log("Bluetooth device connected (Car Head Unit)")
-                    activateMediaSession()
-                }
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                    Logger.log("Bluetooth device disconnected")
-                    deactivateMediaSession()
+                    Logger.log("Bluetooth device disconnected -> Stopping MediaButtonService")
+                    stopSelf()
+                }
+                Intent.ACTION_SCREEN_OFF -> {
+                    Logger.log("Screen turned OFF -> Stopping MediaButtonService for Deep Sleep")
+                    stopSelf()
                 }
             }
         }
@@ -53,37 +54,38 @@ class MediaButtonService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Logger.log("MediaButtonService created")
+        instance = this
+        Logger.log("MediaButtonService created (App-Dynamic Mode)")
         prefsRepository = PreferencesRepository(this)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
         initMediaSession()
-        registerBluetoothReceiver()
+        registerSystemReceiver()
         activateMediaSession()
     }
 
-    private fun registerBluetoothReceiver() {
+    private fun registerSystemReceiver() {
         if (!isReceiverRegistered) {
             val filter = IntentFilter().apply {
-                addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
                 addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+                addAction(Intent.ACTION_SCREEN_OFF)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(bluetoothReceiver, filter, RECEIVER_EXPORTED)
+                registerReceiver(systemReceiver, filter, RECEIVER_EXPORTED)
             } else {
-                registerReceiver(bluetoothReceiver, filter)
+                registerReceiver(systemReceiver, filter)
             }
             isReceiverRegistered = true
-            Logger.log("Registered Bluetooth connection receiver")
+            Logger.log("Registered system receiver for Screen Off & Bluetooth Disconnect")
         }
     }
 
-    private fun unregisterBluetoothReceiver() {
+    private fun unregisterSystemReceiver() {
         if (isReceiverRegistered) {
             try {
-                unregisterReceiver(bluetoothReceiver)
+                unregisterReceiver(systemReceiver)
             } catch (e: Exception) {
-                Logger.log("Error unregistering Bluetooth receiver: ${e.message}", isError = true)
+                Logger.log("Error unregistering system receiver: ${e.message}", isError = true)
             }
             isReceiverRegistered = false
         }
@@ -107,31 +109,31 @@ class MediaButtonService : Service() {
             setCallback(object : MediaSession.Callback() {
                 override fun onSkipToNext() {
                     Logger.log("MediaSession: onSkipToNext() received -> Swiping Up")
-                    ReelsAccessibilityService.getInstance()?.swipeUp(force = true)
+                    performSwipeUp()
                 }
 
                 override fun onSkipToPrevious() {
                     if (prefsRepository.isPrevButtonDoubleTap) {
                         Logger.log("MediaSession: onSkipToPrevious() received -> Double Tapping (Like)")
-                        ReelsAccessibilityService.getInstance()?.doubleTap(force = true)
+                        performDoubleTap()
                     } else {
                         Logger.log("MediaSession: onSkipToPrevious() received -> Swiping Down")
-                        ReelsAccessibilityService.getInstance()?.swipeDown(force = true)
+                        performSwipeDown()
                     }
                 }
 
                 override fun onFastForward() {
                     Logger.log("MediaSession: onFastForward() received -> Swiping Up")
-                    ReelsAccessibilityService.getInstance()?.swipeUp(force = true)
+                    performSwipeUp()
                 }
 
                 override fun onRewind() {
                     if (prefsRepository.isPrevButtonDoubleTap) {
                         Logger.log("MediaSession: onRewind() received -> Double Tapping (Like)")
-                        ReelsAccessibilityService.getInstance()?.doubleTap(force = true)
+                        performDoubleTap()
                     } else {
                         Logger.log("MediaSession: onRewind() received -> Swiping Down")
-                        ReelsAccessibilityService.getInstance()?.swipeDown(force = true)
+                        performSwipeDown()
                     }
                 }
 
@@ -151,7 +153,7 @@ class MediaButtonService : Service() {
                             KeyEvent.KEYCODE_NAVIGATE_NEXT,
                             KeyEvent.KEYCODE_MEDIA_STEP_FORWARD,
                             KeyEvent.KEYCODE_CHANNEL_UP -> {
-                                ReelsAccessibilityService.getInstance()?.swipeUp(force = true)
+                                performSwipeUp()
                                 return true
                             }
                             KeyEvent.KEYCODE_MEDIA_PREVIOUS,
@@ -160,9 +162,9 @@ class MediaButtonService : Service() {
                             KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
                             KeyEvent.KEYCODE_CHANNEL_DOWN -> {
                                 if (prefsRepository.isPrevButtonDoubleTap) {
-                                    ReelsAccessibilityService.getInstance()?.doubleTap(force = true)
+                                    performDoubleTap()
                                 } else {
-                                    ReelsAccessibilityService.getInstance()?.swipeDown(force = true)
+                                    performSwipeDown()
                                 }
                                 return true
                             }
@@ -171,6 +173,42 @@ class MediaButtonService : Service() {
                     return super.onMediaButtonEvent(mediaButtonIntent)
                 }
             })
+        }
+    }
+
+    private fun performSwipeUp() {
+        val service = ReelsAccessibilityService.getInstance()
+        if (service != null) {
+            service.swipeUp(force = true)
+        } else if (ShizukuManager.isGranted) {
+            val displayMetrics = resources.displayMetrics
+            ShizukuManager.swipeUp(displayMetrics.widthPixels, displayMetrics.heightPixels, prefsRepository.swipeDurationMs)
+        } else {
+            Logger.log("Swipe Up failed: Neither Accessibility Service nor Shizuku is active!", isError = true)
+        }
+    }
+
+    private fun performSwipeDown() {
+        val service = ReelsAccessibilityService.getInstance()
+        if (service != null) {
+            service.swipeDown(force = true)
+        } else if (ShizukuManager.isGranted) {
+            val displayMetrics = resources.displayMetrics
+            ShizukuManager.swipeDown(displayMetrics.widthPixels, displayMetrics.heightPixels, prefsRepository.swipeDurationMs)
+        } else {
+            Logger.log("Swipe Down failed: Neither Accessibility Service nor Shizuku is active!", isError = true)
+        }
+    }
+
+    private fun performDoubleTap() {
+        val service = ReelsAccessibilityService.getInstance()
+        if (service != null) {
+            service.doubleTap(force = true)
+        } else if (ShizukuManager.isGranted) {
+            val displayMetrics = resources.displayMetrics
+            ShizukuManager.doubleTap(displayMetrics.widthPixels, displayMetrics.heightPixels)
+        } else {
+            Logger.log("Double Tap failed: Neither Accessibility Service nor Shizuku is active!", isError = true)
         }
     }
 
@@ -194,7 +232,7 @@ class MediaButtonService : Service() {
             setPlaybackState(state)
             isActive = true
         }
-        Logger.log("Activated MediaSession (Playing State + AudioFocus)")
+        Logger.log("Activated MediaSession & AudioFocus for Target App")
     }
 
     private fun deactivateMediaSession() {
@@ -209,7 +247,7 @@ class MediaButtonService : Service() {
             setPlaybackState(state)
             isActive = false
         }
-        Logger.log("Deactivated MediaSession (Paused/Idle State)")
+        Logger.log("Deactivated MediaSession & Released AudioFocus")
     }
 
     private fun requestAudioFocus() {
@@ -320,12 +358,15 @@ class MediaButtonService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        unregisterBluetoothReceiver()
+        unregisterSystemReceiver()
         deactivateMediaSession()
         mediaSession?.release()
         mediaSession = null
         isRunning = false
-        Logger.log("MediaButtonService destroyed")
+        if (instance == this) {
+            instance = null
+        }
+        Logger.log("MediaButtonService destroyed -> 0 Background Drain")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -375,6 +416,11 @@ class MediaButtonService : Service() {
 
         const val ACTION_START = "com.markvoronin.reelsonthego.action.START"
         const val ACTION_STOP = "com.markvoronin.reelsonthego.action.STOP"
+
+        @Volatile
+        private var instance: MediaButtonService? = null
+
+        fun getInstance(): MediaButtonService? = instance
 
         var isRunning: Boolean = false
             private set
