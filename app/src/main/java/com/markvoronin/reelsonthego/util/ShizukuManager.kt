@@ -37,7 +37,7 @@ object ShizukuManager {
         get() {
             return try {
                 Shizuku.pingBinder()
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 false
             }
         }
@@ -47,7 +47,7 @@ object ShizukuManager {
             return try {
                 if (!isAvailable) false
                 else Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 false
             }
         }
@@ -58,7 +58,7 @@ object ShizukuManager {
                 val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
                 val exitCode = process.waitFor()
                 exitCode == 0
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 false
             }
         }

@@ -6,6 +6,7 @@ import android.graphics.Path
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import com.markvoronin.reelsonthego.data.PreferencesRepository
+import com.markvoronin.reelsonthego.data.PrevAction
 import com.markvoronin.reelsonthego.util.Logger
 import com.markvoronin.reelsonthego.util.ShizukuManager
 import java.lang.ref.WeakReference
@@ -13,7 +14,7 @@ import java.lang.ref.WeakReference
 class ReelsAccessibilityService : AccessibilityService() {
 
     private lateinit var prefsRepository: PreferencesRepository
-    private var currentPackageName: String = ""
+    var currentPackageName: String = ""
 
     override fun onCreate() {
         super.onCreate()
@@ -81,9 +82,16 @@ class ReelsAccessibilityService : AccessibilityService() {
             "com.google.android.gms",
             "com.google.android.permissioncontroller",
             "com.android.permissioncontroller",
-            "com.google.android.setupwizard"
+            "com.google.android.setupwizard",
+            "com.google.android.apps.nexuslauncher",
+            "com.google.android.as",
+            "com.sec.android.app.launcher",
+            "com.miui.home",
+            "com.oneplus.launcher",
+            "com.oppo.launcher",
+            "com.huawei.android.launcher"
         )
-        return systemPackages.contains(pkg) || pkg.contains("keyboard") || pkg.contains("inputmethod")
+        return systemPackages.contains(pkg) || pkg.contains("keyboard") || pkg.contains("inputmethod") || pkg.contains("launcher")
     }
 
     override fun onInterrupt() {
@@ -126,11 +134,12 @@ class ReelsAccessibilityService : AccessibilityService() {
             KeyEvent.KEYCODE_NAVIGATE_PREVIOUS,
             KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
             KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                if (prefsRepository.isPrevButtonDoubleTap) {
-                    Logger.log("Intercepted PREVIOUS KeyCode ${event.keyCode} -> Double Tapping (Like)")
+                val action = prefsRepository.getPrevActionForPackage(currentPackageName)
+                if (action == PrevAction.LIKE) {
+                    Logger.log("Intercepted PREVIOUS KeyCode ${event.keyCode} ($currentPackageName) -> Double Tapping (Like)")
                     doubleTap(force = true)
                 } else {
-                    Logger.log("Intercepted PREVIOUS KeyCode ${event.keyCode} -> Swiping Down")
+                    Logger.log("Intercepted PREVIOUS KeyCode ${event.keyCode} ($currentPackageName) -> Swiping Down")
                     swipeDown(force = true)
                 }
                 true

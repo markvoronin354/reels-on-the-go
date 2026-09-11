@@ -23,6 +23,7 @@ import android.os.IBinder
 import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import com.markvoronin.reelsonthego.MainActivity
+import com.markvoronin.reelsonthego.data.PrevAction
 import com.markvoronin.reelsonthego.R
 import com.markvoronin.reelsonthego.data.PreferencesRepository
 import com.markvoronin.reelsonthego.util.Logger
@@ -113,7 +114,7 @@ class MediaButtonService : Service() {
                 }
 
                 override fun onSkipToPrevious() {
-                    if (prefsRepository.isPrevButtonDoubleTap) {
+                    if (getActivePrevAction() == PrevAction.LIKE) {
                         Logger.log("MediaSession: onSkipToPrevious() received -> Double Tapping (Like)")
                         performDoubleTap()
                     } else {
@@ -128,7 +129,7 @@ class MediaButtonService : Service() {
                 }
 
                 override fun onRewind() {
-                    if (prefsRepository.isPrevButtonDoubleTap) {
+                    if (getActivePrevAction() == PrevAction.LIKE) {
                         Logger.log("MediaSession: onRewind() received -> Double Tapping (Like)")
                         performDoubleTap()
                     } else {
@@ -161,7 +162,7 @@ class MediaButtonService : Service() {
                             KeyEvent.KEYCODE_NAVIGATE_PREVIOUS,
                             KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
                             KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                                if (prefsRepository.isPrevButtonDoubleTap) {
+                                if (getActivePrevAction() == PrevAction.LIKE) {
                                     performDoubleTap()
                                 } else {
                                     performSwipeDown()
@@ -174,6 +175,12 @@ class MediaButtonService : Service() {
                 }
             })
         }
+    }
+
+    private fun getActivePrevAction(): PrevAction {
+        val service = ReelsAccessibilityService.getInstance()
+        val activePkg = service?.currentPackageName ?: ""
+        return prefsRepository.getPrevActionForPackage(activePkg)
     }
 
     private fun performSwipeUp() {

@@ -5,8 +5,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.TextUtils
 import android.widget.Toast
@@ -21,6 +23,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -40,16 +43,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.SettingsBrightness
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.TouchApp
@@ -88,7 +94,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -96,7 +101,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.markvoronin.reelsonthego.data.AppThemeMode
 import com.markvoronin.reelsonthego.data.PreferencesRepository
+import com.markvoronin.reelsonthego.data.PrevAction
 import com.markvoronin.reelsonthego.service.MediaButtonService
 import com.markvoronin.reelsonthego.service.ReelsAccessibilityService
 import com.markvoronin.reelsonthego.ui.theme.ReelsWhileDrivingTheme
@@ -116,8 +124,17 @@ class MainActivity : ComponentActivity() {
         ShizukuManager.init()
 
         setContent {
-            ReelsWhileDrivingTheme {
-                MainScreen(prefsRepository = prefsRepository)
+            var currentThemeMode by remember { mutableStateOf(prefsRepository.themeMode) }
+
+            ReelsWhileDrivingTheme(themeMode = currentThemeMode) {
+                MainScreen(
+                    prefsRepository = prefsRepository,
+                    currentThemeMode = currentThemeMode,
+                    onThemeModeChange = { newMode ->
+                        currentThemeMode = newMode
+                        prefsRepository.themeMode = newMode
+                    }
+                )
             }
         }
     }
@@ -125,7 +142,11 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(prefsRepository: PreferencesRepository) {
+fun MainScreen(
+    prefsRepository: PreferencesRepository,
+    currentThemeMode: AppThemeMode,
+    onThemeModeChange: (AppThemeMode) -> Unit
+) {
     val context = LocalContext.current
 
     // Preferences & State
@@ -140,6 +161,7 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
     var isMediaServiceRunning by remember { mutableStateOf(MediaButtonService.isRunning) }
     var shizukuAvailable by remember { mutableStateOf(ShizukuManager.isAvailable) }
     var shizukuGranted by remember { mutableStateOf(ShizukuManager.isGranted) }
+    var isBatteryOptIgnored by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
 
     // UI state
     var showHelpSheet by remember { mutableStateOf(false) }
@@ -183,6 +205,7 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                 isMediaServiceRunning = MediaButtonService.isRunning
                 shizukuAvailable = ShizukuManager.isAvailable
                 shizukuGranted = ShizukuManager.isGranted
+                isBatteryOptIgnored = isIgnoringBatteryOptimizations(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -235,9 +258,32 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            val nextMode = currentThemeMode.next()
+                            onThemeModeChange(nextMode)
+                            val toastLabel = when (nextMode) {
+                                AppThemeMode.DARK -> "Dark Mode 🌙"
+                                AppThemeMode.LIGHT -> "Light Mode ☀️"
+                                AppThemeMode.SYSTEM -> "System Theme 📱"
+                            }
+                            Toast.makeText(context, toastLabel, Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Icon(
+                            imageVector = when (currentThemeMode) {
+                                AppThemeMode.DARK -> Icons.Rounded.DarkMode
+                                AppThemeMode.LIGHT -> Icons.Rounded.LightMode
+                                AppThemeMode.SYSTEM -> Icons.Rounded.SettingsBrightness
+                            },
+                            contentDescription = "Theme Mode",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     IconButton(onClick = { showHelpSheet = true }) {
                         Icon(
-                            imageVector = Icons.Rounded.HelpOutline,
+                            imageVector = Icons.AutoMirrored.Rounded.HelpOutline,
                             contentDescription = "Help Guide",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -299,7 +345,8 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -353,7 +400,8 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -367,7 +415,7 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                     SwitchSettingRow(
                         icon = Icons.Rounded.Favorite,
                         title = "Double-Tap Like on Prev",
-                        subtitle = "Prev button likes video instead of scrolling back",
+                        subtitle = "Default action for Prev button (customizable per app below)",
                         checked = isPrevDoubleTap,
                         onCheckedChange = { checked ->
                             isPrevDoubleTap = checked
@@ -400,7 +448,8 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -421,25 +470,69 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
 
                         PreferencesRepository.SUPPORTED_APPS.forEachIndexed { index, app ->
                             val isAppEnabled = enabledPackages.contains(app.packageName)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = app.displayName,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Switch(
-                                    checked = isAppEnabled,
-                                    onCheckedChange = { checked ->
-                                        prefsRepository.togglePackage(app.packageName, checked)
-                                        enabledPackages = prefsRepository.enabledPackages
+                            val currentPrevAction = prefsRepository.getPrevActionForPackage(app.packageName)
+                            var appPrevAction by remember(app.packageName, isPrevDoubleTap) { mutableStateOf(currentPrevAction) }
+
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = app.displayName,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Switch(
+                                        checked = isAppEnabled,
+                                        onCheckedChange = { checked ->
+                                            prefsRepository.togglePackage(app.packageName, checked)
+                                            enabledPackages = prefsRepository.enabledPackages
+                                        }
+                                    )
+                                }
+
+                                AnimatedVisibility(visible = isAppEnabled) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Prev button:",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+
+                                        PrevAction.entries.forEach { action ->
+                                            val isSelected = appPrevAction == action
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    appPrevAction = action
+                                                    prefsRepository.setPrevActionForPackage(app.packageName, action)
+                                                },
+                                                label = {
+                                                    Text(
+                                                        text = action.label,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                                ),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                        }
                                     }
-                                )
+                                }
                             }
                             if (index < PreferencesRepository.SUPPORTED_APPS.lastIndex) {
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
@@ -453,7 +546,8 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -528,6 +622,18 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                             }
                         }
                     )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                    // Battery Optimization Status
+                    PermissionTileRow(
+                        title = "Unrestricted Battery Usage",
+                        statusText = if (isBatteryOptIgnored) "Unrestricted" else "Optimize (May Kill Service)",
+                        isOk = isBatteryOptIgnored,
+                        onClick = {
+                            launchBatteryOptimizationSettings(context)
+                        }
+                    )
                 }
             }
 
@@ -535,7 +641,8 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -621,7 +728,8 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                     .fillMaxWidth()
                     .animateContentSize(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -796,9 +904,15 @@ private fun HeroMasterCard(
         MaterialTheme.colorScheme.onSurfaceVariant
     }
 
+    val cardBorder = BorderStroke(
+        1.dp,
+        if (isEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant
+    )
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
+        border = cardBorder,
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = contentColor
@@ -1071,4 +1185,48 @@ private fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<
         }
     }
     return false
+}
+
+private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    return powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
+}
+
+private fun launchBatteryOptimizationSettings(context: Context) {
+    val pkg = context.packageName
+    val intents = listOf(
+        // 1. Direct prompt to request ignore battery optimizations
+        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg")),
+
+        // 2. App info settings page (Contains "Battery" -> "Unrestricted" on Android 8-15)
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg")),
+
+        // 3. System-wide ignore battery optimization list
+        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+
+        // 4. Xiaomi / MIUI / HyperOS Powerkeeper
+        Intent().apply {
+            setClassName("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity")
+            putExtra("package_name", pkg)
+            putExtra("package_label", "WheelReels")
+        },
+
+        // 5. Samsung Device Care
+        Intent().apply {
+            setClassName("com.samsung.android.looper", "com.samsung.android.looper.autoinitial.AutoInitialActivity")
+        }
+    )
+
+    for (intent in intents) {
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            Toast.makeText(context, "Set Battery Usage to 'Unrestricted'", Toast.LENGTH_LONG).show()
+            return
+        } catch (_: Exception) {
+            // Try next intent fallback
+        }
+    }
+
+    Toast.makeText(context, "Set Battery Usage to 'Unrestricted' in App Settings", Toast.LENGTH_LONG).show()
 }
