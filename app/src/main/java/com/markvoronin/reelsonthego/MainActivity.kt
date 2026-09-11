@@ -213,7 +213,7 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Reels On The Go",
+                                text = "WheelReels",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
@@ -727,7 +727,7 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Reels On The Go • v$versionName",
+                    text = "WheelReels • v$versionName",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )

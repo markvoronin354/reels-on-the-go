@@ -1,6 +1,6 @@
-# Reels While Driving 🚗📱
+# WheelReels 🚗📱
 
-**Reels While Driving** is an Android utility application that allows drivers to navigate short-form video apps (Instagram Reels, TikTok, Facebook Reels, YouTube Shorts, Snapchat) using the **Next** and **Previous** track buttons on their car's steering wheel via Bluetooth. Technically this is the corret way of doing it...hands free driving. have fun and stay safe!
+**WheelReels** is an Android utility application that allows drivers to navigate short-form video apps (Instagram Reels, TikTok, Facebook Reels, YouTube Shorts, Snapchat) using the **Next** and **Previous** track buttons on their car's steering wheel via Bluetooth. Technically this is the corret way of doing it...hands free driving. have fun and stay safe!
 
 ---
 
@@ -29,7 +29,7 @@
    ./gradlew assembleDebug
    ```
 2. Install the APK on your Android device.
-3. Open **Reels While Driving**:
+3. Open **WheelReels**:
    - Turn ON **Accessibility Permission** (or authorize **Shizuku / Shevery**).
    - Turn ON the **Bluetooth MediaSession Listener** switch.
 4. Connect your phone to your car's Bluetooth audio.

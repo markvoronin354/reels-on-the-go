@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "reels while driving"
+rootProject.name = "WheelReels"
 include(":app")
  

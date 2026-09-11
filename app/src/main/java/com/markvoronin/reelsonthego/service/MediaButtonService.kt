@@ -99,9 +99,9 @@ class MediaButtonService : Service() {
             )
 
             val metadata = MediaMetadata.Builder()
-                .putString(MediaMetadata.METADATA_KEY_TITLE, "Reels Steering Control")
+                .putString(MediaMetadata.METADATA_KEY_TITLE, "WheelReels Control")
                 .putString(MediaMetadata.METADATA_KEY_ARTIST, "Active")
-                .putString(MediaMetadata.METADATA_KEY_ALBUM, "Reels While Driving")
+                .putString(MediaMetadata.METADATA_KEY_ALBUM, "WheelReels")
                 .build()
 
             setMetadata(metadata)
@@ -400,7 +400,7 @@ class MediaButtonService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Reels Control Service",
+                "WheelReels Control Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Keeps Bluetooth media session active for steering wheel controls"

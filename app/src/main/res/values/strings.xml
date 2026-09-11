@@ -1,6 +1,6 @@
 <resources>
-    <string name="app_name">Reels While Driving</string>
+    <string name="app_name">WheelReels</string>
     <string name="accessibility_service_description">Intercepts media button presses (e.g. steering wheel Next/Previous track buttons) when short-form video apps like Instagram Reels or TikTok are open to automatically perform vertical swipe gestures.</string>
-    <string name="service_running_notification_title">Reels Control Active</string>
+    <string name="service_running_notification_title">WheelReels Active</string>
     <string name="service_running_notification_text">Listening for steering wheel media button controls</string>
 </resources>
