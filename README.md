@@ -10,7 +10,7 @@
 - ⚡ **Shevery / Shizuku & Root Support**: Uses system ADB commands (`input swipe`) via Shizuku/Shevery or Root (`su`) to bypass OEM accessibility blocks and dispatch gestures.
 - 🎯 **Target App Selection**: Choose specific apps (Instagram, TikTok, Facebook, YouTube, Snapchat) or enable **Global Swiping**.
 - 🛠️ **Live Event Console**: Real-time on-screen log viewer displaying incoming keycodes, Bluetooth MediaSession events, and gesture statuses.
-- 🟢 **Honda & Head Unit Optimization**: Holds MediaSession AudioFocus and outputs media metadata so car head units enable physical steering wheel buttons.
+- 🟢 **Head Unit Optimization**: Holds MediaSession AudioFocus and outputs media metadata so car head units enable physical steering wheel buttons.
 
 ---
 
