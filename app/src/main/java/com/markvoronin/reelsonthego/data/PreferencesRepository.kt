@@ -55,7 +55,7 @@ class PreferencesRepository(context: Context) {
         val SWIPE_SPEED_OPTIONS = listOf(
             SwipeSpeedOption("Fast (80 ms)", 80L),
             SwipeSpeedOption("Medium (180 ms)", 180L),
-            SwipeSpeedOption("Normal (250 ms)", 250L)
+            SwipeSpeedOption("Slow (250 ms)", 250L)
         )
 
         val DEFAULT_PACKAGES = setOf(
