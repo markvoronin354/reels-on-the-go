@@ -15,9 +15,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,22 +33,47 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DirectionsCar
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.HelpOutline
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -51,7 +84,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
@@ -65,6 +100,8 @@ import com.markvoronin.reelsonthego.data.PreferencesRepository
 import com.markvoronin.reelsonthego.service.MediaButtonService
 import com.markvoronin.reelsonthego.service.ReelsAccessibilityService
 import com.markvoronin.reelsonthego.ui.theme.ReelsWhileDrivingTheme
+import com.markvoronin.reelsonthego.ui.theme.StatusAmber
+import com.markvoronin.reelsonthego.ui.theme.StatusGreen
 import com.markvoronin.reelsonthego.util.Logger
 import com.markvoronin.reelsonthego.util.ShizukuManager
 
@@ -90,22 +127,42 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(prefsRepository: PreferencesRepository) {
     val context = LocalContext.current
-    val isDark = isSystemInDarkTheme()
 
-    var isAccessibilityEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled(context, ReelsAccessibilityService::class.java)) }
-    var isMediaServiceRunning by remember { mutableStateOf(MediaButtonService.isRunning) }
+    // Preferences & State
     var isMasterEnabled by remember { mutableStateOf(prefsRepository.isServiceEnabled) }
-    var isGlobalSwipeEnabled by remember { mutableStateOf(prefsRepository.isGlobalSwipeEnabled) }
     var isPrevDoubleTap by remember { mutableStateOf(prefsRepository.isPrevButtonDoubleTap) }
     var selectedSwipeDuration by remember { mutableLongStateOf(prefsRepository.swipeDurationMs) }
+    var isGlobalSwipeEnabled by remember { mutableStateOf(prefsRepository.isGlobalSwipeEnabled) }
     var enabledPackages by remember { mutableStateOf(prefsRepository.enabledPackages) }
 
+    // Service & Permission States
+    var isAccessibilityEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled(context, ReelsAccessibilityService::class.java)) }
+    var isMediaServiceRunning by remember { mutableStateOf(MediaButtonService.isRunning) }
     var shizukuAvailable by remember { mutableStateOf(ShizukuManager.isAvailable) }
     var shizukuGranted by remember { mutableStateOf(ShizukuManager.isGranted) }
 
+    // UI state
+    var showHelpSheet by remember { mutableStateOf(false) }
+    var isLogsExpanded by remember { mutableStateOf(false) }
+
     val logs by Logger.logs.collectAsState()
 
-    // Runtime permission launcher for notifications (Android 13+)
+    // App Version Info
+    val versionName = remember(context) {
+        try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+            packageInfo.versionName ?: "1.5"
+        } catch (_: Exception) {
+            "1.5"
+        }
+    }
+
+    // Permission launcher for Android 13+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -113,11 +170,11 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
             MediaButtonService.startService(context)
             isMediaServiceRunning = true
         } else {
-            Toast.makeText(context, "Notification permission required for background listener notification", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Notification permission required for background service", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // Re-check accessibility service status when app resumes
+    // Lifecycle observer to refresh states on resume
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -137,7 +194,55 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Reels While Driving") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.DirectionsCar,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Reels On The Go",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        // Version Badge Chip
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                text = "v$versionName",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showHelpSheet = true }) {
+                        Icon(
+                            imageVector = Icons.Rounded.HelpOutline,
+                            contentDescription = "Help Guide",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
@@ -149,98 +254,68 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Master Switch Card
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Hero Master Power Card
+            HeroMasterCard(
+                isEnabled = isMasterEnabled,
+                onEnabledChange = { enabled ->
+                    isMasterEnabled = enabled
+                    prefsRepository.isServiceEnabled = enabled
+                },
+                isAccessibilityEnabled = isAccessibilityEnabled,
+                isMediaServiceRunning = isMediaServiceRunning,
+                shizukuAvailable = shizukuAvailable,
+                shizukuGranted = shizukuGranted,
+                onOpenAccessibility = {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    context.startActivity(intent)
+                },
+                onToggleMediaService = {
+                    if (!isMediaServiceRunning) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                MediaButtonService.startService(context)
+                                isMediaServiceRunning = true
+                            } else {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        } else {
+                            MediaButtonService.startService(context)
+                            isMediaServiceRunning = true
+                        }
+                    } else {
+                        MediaButtonService.stopService(context)
+                        isMediaServiceRunning = false
+                    }
+                }
+            )
+
+            // Swipe Speed / Duration Selector Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Enable Steering Wheel Swiping",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Speed,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Intercept Next/Prev media buttons to scroll reels",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "Scroll Speed",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
-                    Switch(
-                        checked = isMasterEnabled,
-                        onCheckedChange = { checked ->
-                            isMasterEnabled = checked
-                            prefsRepository.isServiceEnabled = checked
-                        }
-                    )
-                }
-            }
-
-            // Remap Previous Button Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Remap Prev Button to Double-Tap (Like)",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Single pressing PREV button double-taps screen to like reels instead of scrolling back",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = isPrevDoubleTap,
-                        onCheckedChange = { checked ->
-                            isPrevDoubleTap = checked
-                            prefsRepository.isPrevButtonDoubleTap = checked
-                        }
-                    )
-                }
-            }
-
-            // Swipe Speed Selection Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "Swipe Speed / Duration",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Adjust how fast the scroll gesture fling executes",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Row(
@@ -248,14 +323,25 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         PreferencesRepository.SWIPE_SPEED_OPTIONS.forEach { option ->
+                            val isSelected = selectedSwipeDuration == option.durationMs
                             FilterChip(
-                                selected = selectedSwipeDuration == option.durationMs,
+                                selected = isSelected,
                                 onClick = {
                                     selectedSwipeDuration = option.durationMs
                                     prefsRepository.swipeDurationMs = option.durationMs
-                                    Toast.makeText(context, "Set swipe duration to ${option.durationMs}ms", Toast.LENGTH_SHORT).show()
                                 },
-                                label = { Text(option.label, fontSize = 11.sp) },
+                                label = {
+                                    Text(
+                                        text = option.label.split(" ").first(), // Short label
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -263,249 +349,90 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                 }
             }
 
-            // Accessibility Status Card
-            val accessCardContainerColor = if (isAccessibilityEnabled) {
-                if (isDark) Color(0xFF1C3A27) else Color(0xFFE8F5E9)
-            } else {
-                if (isDark) Color(0xFF3E1E1E) else Color(0xFFFFEBEE)
-            }
-
-            val accessCardTextColor = if (isAccessibilityEnabled) {
-                if (isDark) Color(0xFFE8F5E9) else Color(0xFF1B5E20)
-            } else {
-                if (isDark) Color(0xFFFFEBEE) else Color(0xFF7A1C1C)
-            }
-
-            val accessCardStatusColor = if (isAccessibilityEnabled) {
-                if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
-            } else {
-                if (isDark) Color(0xFFE57373) else Color(0xFFC62828)
-            }
-
-            val accessButtonContainerColor = if (isAccessibilityEnabled) {
-                if (isDark) Color(0xFF2E7D32) else Color(0xFF388E3C)
-            } else {
-                if (isDark) Color(0xFFC62828) else Color(0xFFD32F2F)
-            }
-
+            // Steering Wheel Action & Behavior Controls Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = accessCardContainerColor,
-                    contentColor = accessCardTextColor
-                )
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Accessibility Permission",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = accessCardTextColor
-                        )
-                        Text(
-                            text = if (isAccessibilityEnabled) "ACTIVE" else "INACTIVE",
-                            color = accessCardStatusColor,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
+                Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Required to dispatch swipe gestures on TikTok / Reels when media buttons are pressed.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = accessCardTextColor
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = accessButtonContainerColor,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text(if (isAccessibilityEnabled) "Accessibility Settings" else "Grant Accessibility Permission")
-                    }
-                }
-            }
-
-            // Bluetooth Media Session Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Bluetooth MediaSession Listener",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Foreground service to capture steering wheel commands on car head units",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = isMediaServiceRunning,
-                            onCheckedChange = { running ->
-                                if (running) {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                            MediaButtonService.startService(context)
-                                            isMediaServiceRunning = true
-                                        } else {
-                                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                        }
-                                    } else {
-                                        MediaButtonService.startService(context)
-                                        isMediaServiceRunning = true
-                                    }
-                                } else {
-                                    MediaButtonService.stopService(context)
-                                    isMediaServiceRunning = false
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Shizuku Integration Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Shizuku / ADB Integration",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = if (shizukuGranted) "ACTIVE" else if (shizukuAvailable) "AVAILABLE" else "OFFLINE",
-                            color = if (shizukuGranted) Color(0xFF2E7D32) else if (shizukuAvailable) Color(0xFFF57C00) else Color.Gray,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Provides system-level touch injection and bypasses OEM accessibility blocks.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    if (shizukuAvailable && !shizukuGranted) {
-                        Button(
-                            onClick = {
-                                ShizukuManager.requestPermission()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Grant Shizuku Permission")
-                        }
-                    } else if (shizukuGranted) {
-                        OutlinedButton(
-                            onClick = {
-                                ShizukuManager.grantMediaKeyPermissions(context)
-                                Toast.makeText(context, "Granted System MediaKey permissions via Shizuku!", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Grant System MediaKey Permissions (ADB)")
-                        }
-                    } else {
-                        Text(
-                            text = "Shizuku app is not running. Install and start Shizuku via Wireless Debugging if Accessibility is blocked.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // Target Apps Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "Target Apps",
+                        text = "Behavior",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Choose which apps convert steering wheel buttons into swipes",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Global Mode Toggle
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Global Swiping (All Apps)")
-                        Switch(
-                            checked = isGlobalSwipeEnabled,
-                            onCheckedChange = { checked ->
-                                isGlobalSwipeEnabled = checked
-                                prefsRepository.isGlobalSwipeEnabled = checked
-                            }
-                        )
-                    }
+                    // Remap Prev Button Row
+                    SwitchSettingRow(
+                        icon = Icons.Rounded.Favorite,
+                        title = "Double-Tap Like on Prev",
+                        subtitle = "Prev button likes video instead of scrolling back",
+                        checked = isPrevDoubleTap,
+                        onCheckedChange = { checked ->
+                            isPrevDoubleTap = checked
+                            prefsRepository.isPrevButtonDoubleTap = checked
+                        }
+                    )
 
-                    if (!isGlobalSwipeEnabled) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                        PreferencesRepository.SUPPORTED_APPS.forEach { app ->
+                    // Global Swiping Toggle Row
+                    SwitchSettingRow(
+                        icon = Icons.Rounded.Public,
+                        title = "Global Swiping",
+                        subtitle = "Enable in all applications",
+                        checked = isGlobalSwipeEnabled,
+                        onCheckedChange = { checked ->
+                            isGlobalSwipeEnabled = checked
+                            prefsRepository.isGlobalSwipeEnabled = checked
+                        }
+                    )
+                }
+            }
+
+            // Target Apps Selector Card (Shown when Global Swipe is disabled)
+            AnimatedVisibility(
+                visible = !isGlobalSwipeEnabled,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.Apps,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Target Apps",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        PreferencesRepository.SUPPORTED_APPS.forEachIndexed { index, app ->
                             val isAppEnabled = enabledPackages.contains(app.packageName)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                    .padding(vertical = 6.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(app.displayName)
+                                Text(
+                                    text = app.displayName,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
                                 Switch(
                                     checked = isAppEnabled,
                                     onCheckedChange = { checked ->
@@ -514,185 +441,614 @@ fun MainScreen(prefsRepository: PreferencesRepository) {
                                     }
                                 )
                             }
+                            if (index < PreferencesRepository.SUPPORTED_APPS.lastIndex) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            }
                         }
                     }
                 }
             }
 
-            // Live Debug Logs Console Card
+            // Permissions & Advanced Integration Section
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Security,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Services & Access",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Accessibility Service Status
+                    PermissionTileRow(
+                        title = "Accessibility Gesture Dispatcher",
+                        statusText = if (isAccessibilityEnabled) "Active" else "Required",
+                        isOk = isAccessibilityEnabled,
+                        onClick = {
+                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            context.startActivity(intent)
+                        }
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                    // Bluetooth Listener Service Status
+                    PermissionTileRow(
+                        title = "Bluetooth Media Listener",
+                        statusText = if (isMediaServiceRunning) "Running" else "Stopped",
+                        isOk = isMediaServiceRunning,
+                        onClick = {
+                            if (!isMediaServiceRunning) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                        MediaButtonService.startService(context)
+                                        isMediaServiceRunning = true
+                                    } else {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                } else {
+                                    MediaButtonService.startService(context)
+                                    isMediaServiceRunning = true
+                                }
+                            } else {
+                                MediaButtonService.stopService(context)
+                                isMediaServiceRunning = false
+                            }
+                        }
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                    // Shizuku Status
+                    PermissionTileRow(
+                        title = "Shizuku / ADB Touch Injection",
+                        statusText = if (shizukuGranted) "Granted" else if (shizukuAvailable) "Available" else "Optional",
+                        isOk = shizukuGranted,
+                        onClick = {
+                            if (shizukuAvailable && !shizukuGranted) {
+                                ShizukuManager.requestPermission()
+                            } else if (shizukuGranted) {
+                                ShizukuManager.grantMediaKeyPermissions(context)
+                                Toast.makeText(context, "Granted MediaKey permissions via Shizuku", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Shizuku app is not running", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    )
+                }
+            }
+
+            // Quick Gesture Tester Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.TouchApp,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Test Gestures",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "Live Key & Event Console",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OutlinedButton(
-                            onClick = { Logger.clear() }
+                        FilledTonalButton(
+                            onClick = {
+                                val service = ReelsAccessibilityService.getInstance()
+                                if (service != null) {
+                                    service.swipeUp(force = true)
+                                } else if (ShizukuManager.isGranted) {
+                                    val dm = context.resources.displayMetrics
+                                    ShizukuManager.swipeUp(dm.widthPixels, dm.heightPixels, selectedSwipeDuration)
+                                } else {
+                                    Toast.makeText(context, "Enable Accessibility first!", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Clear", fontSize = 12.sp)
+                            Text("Next ⬆️", fontSize = 13.sp)
                         }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp)
-                            .background(Color.Black)
-                            .padding(8.dp)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        if (logs.isEmpty()) {
-                            Text(
-                                text = "Waiting for button presses or events...\nPress steering wheel buttons to see keycodes in real time.",
-                                color = Color.Gray,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp
-                            )
-                        } else {
-                            logs.forEach { entry ->
-                                Text(
-                                    text = "[${entry.timestamp}] ${entry.message}",
-                                    color = if (entry.isError) Color(0xFFFF8A80) else Color(0xFFB9F6CA),
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    lineHeight = 14.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Test Gestures Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "Test Gesture Commands",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        FilledTonalButton(
+                            onClick = {
+                                val service = ReelsAccessibilityService.getInstance()
+                                if (service != null) {
+                                    service.swipeDown(force = true)
+                                } else if (ShizukuManager.isGranted) {
+                                    val dm = context.resources.displayMetrics
+                                    ShizukuManager.swipeDown(dm.widthPixels, dm.heightPixels, selectedSwipeDuration)
+                                } else {
+                                    Toast.makeText(context, "Enable Accessibility first!", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val service = ReelsAccessibilityService.getInstance()
-                                    if (service != null) {
-                                        service.swipeUp(force = true)
-                                        Toast.makeText(context, "Dispatched Swipe Up (Next)", Toast.LENGTH_SHORT).show()
-                                    } else if (ShizukuManager.isGranted) {
-                                        val displayMetrics = context.resources.displayMetrics
-                                        ShizukuManager.swipeUp(displayMetrics.widthPixels, displayMetrics.heightPixels, selectedSwipeDuration)
-                                        Toast.makeText(context, "Dispatched Swipe Up via Shizuku", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "Enable Accessibility or Shizuku first!", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Swipe Up (Next)")
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    val service = ReelsAccessibilityService.getInstance()
-                                    if (service != null) {
-                                        service.swipeDown(force = true)
-                                        Toast.makeText(context, "Dispatched Swipe Down (Prev)", Toast.LENGTH_SHORT).show()
-                                    } else if (ShizukuManager.isGranted) {
-                                        val displayMetrics = context.resources.displayMetrics
-                                        ShizukuManager.swipeDown(displayMetrics.widthPixels, displayMetrics.heightPixels, selectedSwipeDuration)
-                                        Toast.makeText(context, "Dispatched Swipe Down via Shizuku", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "Enable Accessibility or Shizuku first!", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Swipe Down (Prev)")
-                            }
+                            Text("Prev ⬇️", fontSize = 13.sp)
                         }
 
-                        OutlinedButton(
+                        FilledTonalButton(
                             onClick = {
                                 val service = ReelsAccessibilityService.getInstance()
                                 if (service != null) {
                                     service.doubleTap(force = true)
-                                    Toast.makeText(context, "Dispatched Double Tap (Like)", Toast.LENGTH_SHORT).show()
                                 } else if (ShizukuManager.isGranted) {
-                                    val displayMetrics = context.resources.displayMetrics
-                                    ShizukuManager.doubleTap(displayMetrics.widthPixels, displayMetrics.heightPixels)
-                                    Toast.makeText(context, "Dispatched Double Tap via Shizuku", Toast.LENGTH_SHORT).show()
+                                    val dm = context.resources.displayMetrics
+                                    ShizukuManager.doubleTap(dm.widthPixels, dm.heightPixels)
                                 } else {
-                                    Toast.makeText(context, "Enable Accessibility or Shizuku first!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Enable Accessibility first!", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Double Tap (Like Reel)")
+                            Text("Like ❤️", fontSize = 13.sp)
                         }
                     }
                 }
             }
 
-            // Instructions Card
+            // Live Log Console Card
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                )
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             ) {
-                Column(
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isLogsExpanded = !isLogsExpanded },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.Terminal,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Live Event Console",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (logs.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Text(
+                                        text = "${logs.size}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isLogsExpanded && logs.isNotEmpty()) {
+                                IconButton(
+                                    onClick = { Logger.clear() },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Delete,
+                                        contentDescription = "Clear Logs",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Icon(
+                                imageVector = if (isLogsExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (isLogsExpanded) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF0F172A))
+                                .padding(10.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            if (logs.isEmpty()) {
+                                Text(
+                                    text = "Console ready. Press steering wheel buttons to capture events in real time.",
+                                    color = Color(0xFF64748B),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp
+                                )
+                            } else {
+                                Column {
+                                    logs.forEach { entry ->
+                                        Text(
+                                            text = "[${entry.timestamp}] ${entry.message}",
+                                            color = if (entry.isError) Color(0xFFF87171) else Color(0xFF4ADE80),
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 11.sp,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Footer Version Info
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Reels On The Go • v$versionName",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+        }
+    }
+
+    // Modal Bottom Sheet for Instructions
+    if (showHelpSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showHelpSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Quick Setup Guide",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                HelpStepItem(number = "1", title = "Grant Accessibility", description = "Allows the app to scroll videos when steering wheel buttons are pressed.")
+                HelpStepItem(number = "2", title = "Start Bluetooth Listener", description = "Enables background detection of media keys from your car head unit.")
+                HelpStepItem(number = "3", title = "Connect Bluetooth", description = "Pair your phone with your car's media unit.")
+                HelpStepItem(number = "4", title = "Enjoy Hands-free Scrolling", description = "Open Instagram, TikTok, or Shorts and press Next/Prev on your wheel!")
+
+                Button(
+                    onClick = { showHelpSheet = false },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(top = 8.dp),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
+                    Text("Got it")
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroMasterCard(
+    isEnabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    isAccessibilityEnabled: Boolean,
+    isMediaServiceRunning: Boolean,
+    shizukuAvailable: Boolean,
+    shizukuGranted: Boolean,
+    onOpenAccessibility: () -> Unit,
+    onToggleMediaService: () -> Unit
+) {
+    val containerColor = if (isEnabled) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+    }
+
+    val contentColor = if (isEnabled) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = contentColor
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isEnabled) StatusGreen else Color.Gray,
+                            modifier = Modifier.size(8.dp)
+                        ) {}
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isEnabled) "SERVICE ACTIVE" else "SERVICE PAUSED",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp,
+                            color = if (isEnabled) StatusGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "How to use",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                        text = "Steering Wheel Controls",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "1. Grant Accessibility permission above.\n" +
-                                "2. Enable the Bluetooth MediaSession listener.\n" +
-                                "3. Connect your phone to your car's Bluetooth.\n" +
-                                "4. Open Instagram Reels, TikTok, or YouTube Shorts.\n" +
-                                "5. Press Next / Prev buttons on your steering wheel to scroll!",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        lineHeight = 22.sp
+                }
+
+                Switch(
+                    checked = isEnabled,
+                    onCheckedChange = onEnabledChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.primary,
+                        checkedTrackColor = MaterialTheme.colorScheme.surface
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Quick Status Chips Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatusBadgeChip(
+                    label = if (isAccessibilityEnabled) "Accessibility OK" else "Accessibility Required",
+                    isOk = isAccessibilityEnabled,
+                    onClick = onOpenAccessibility,
+                    modifier = Modifier.weight(1f)
+                )
+
+                StatusBadgeChip(
+                    label = if (isMediaServiceRunning) "Listener Active" else "Start Listener",
+                    isOk = isMediaServiceRunning,
+                    onClick = onToggleMediaService,
+                    modifier = Modifier.weight(1f)
+                )
+
+                if (shizukuAvailable || shizukuGranted) {
+                    StatusBadgeChip(
+                        label = if (shizukuGranted) "Shizuku OK" else "Shizuku Ready",
+                        isOk = shizukuGranted,
+                        onClick = {},
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun StatusBadgeChip(
+    label: String,
+    isOk: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isDark = isSystemInDarkTheme()
+    val bg = if (isOk) {
+        if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)
+    } else {
+        if (isDark) Color(0xFF7F1D1D) else Color(0xFFFEE2E2)
+    }
+
+    val fg = if (isOk) {
+        if (isDark) Color(0xFF6EE7B7) else Color(0xFF065F46)
+    } else {
+        if (isDark) Color(0xFFFCA5A5) else Color(0xFF991B1B)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = bg,
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = if (isOk) Icons.Rounded.CheckCircle else Icons.Rounded.Warning,
+                contentDescription = null,
+                tint = fg,
+                modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = fg,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun SwitchSettingRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
+private fun PermissionTileRow(
+    title: String,
+    statusText: String,
+    isOk: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (isOk) StatusGreen.copy(alpha = 0.15f) else StatusAmber.copy(alpha = 0.15f)
+            ) {
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isOk) StatusGreen else StatusAmber,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HelpStepItem(
+    number: String,
+    title: String,
+    description: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = number,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

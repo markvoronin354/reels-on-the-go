@@ -50,11 +50,10 @@ class PreferencesRepository(context: Context) {
         private const val KEY_SWIPE_DURATION = "key_swipe_duration"
         private const val KEY_ENABLED_PACKAGES = "key_enabled_packages"
 
-        const val DEFAULT_SWIPE_DURATION_MS = 120L // Fast 120ms snap scroll
+        const val DEFAULT_SWIPE_DURATION_MS = 80L // Fast 80ms snap scroll
 
         val SWIPE_SPEED_OPTIONS = listOf(
-            SwipeSpeedOption("Ultra Fast (80 ms)", 80L),
-            SwipeSpeedOption("Fast (120 ms)", 120L),
+            SwipeSpeedOption("Fast (80 ms)", 80L),
             SwipeSpeedOption("Medium (180 ms)", 180L),
             SwipeSpeedOption("Normal (250 ms)", 250L)
         )
