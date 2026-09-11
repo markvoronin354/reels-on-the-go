@@ -1,48 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Upward Swipe Arrow (Inside Safe Zone: Y = 25) -->
+    <!-- Top Swipe Arrow (Upward Reel Navigation) -->
     <path
-        android:pathData="M46,33 L54,25 L62,33"
+        android:pathData="M47,28 L54,21 L61,28"
         android:strokeWidth="3.5"
-        android:strokeColor="#38BDF8"
+        android:strokeColor="#00F5D4"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
 
-    <!-- Steering Wheel Outer Rim (Center 54,54 | Radius 17) -->
+    <!-- Steering Wheel Outer Rim -->
     <path
-        android:pathData="M54,37 A17,17 0 1,1 53.99,37"
+        android:pathData="M54,34 A20,20 0 1,1 53.99,34"
         android:strokeWidth="3.5"
-        android:strokeColor="#FFFFFF"
+        android:strokeColor="#F8FAFC"
         android:fillColor="#00000000"
         android:strokeLineCap="round" />
 
-    <!-- Steering Wheel Spokes -->
+    <!-- Wheel Spokes -->
     <path
-        android:pathData="M37,54 L46,54 M62,54 L71,54 M54,62 L54,71"
+        android:pathData="M34,54 L44,54 M64,54 L74,54 M54,64 L54,74"
         android:strokeWidth="3.0"
-        android:strokeColor="#FFFFFF"
+        android:strokeColor="#F8FAFC"
         android:strokeLineCap="round" />
 
-    <!-- Steering Wheel Center Hub -->
-    <path
-        android:pathData="M54,46 A8,8 0 1,1 53.99,46"
-        android:fillColor="#2563EB" />
+    <!-- Center Hub Circle with Gradient -->
+    <path android:pathData="M54,44 A10,10 0 1,1 53.99,44">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="44"
+                android:startY="44"
+                android:endX="64"
+                android:endY="64"
+                android:type="linear">
+                <item android:color="#7C3AED" android:offset="0.0" />
+                <item android:color="#2563EB" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
 
     <!-- Play Icon inside Hub -->
     <path
-        android:pathData="M52,50 L58,54 L52,58 Z"
+        android:pathData="M52,49.5 L58,54 L52,58.5 Z"
         android:fillColor="#FFFFFF" />
 
-    <!-- Downward Swipe Arrow (Inside Safe Zone: Y = 83) -->
+    <!-- Bottom Swipe Arrow (Downward Reel Navigation) -->
     <path
-        android:pathData="M46,75 L54,83 L62,75"
+        android:pathData="M47,80 L54,87 L61,80"
         android:strokeWidth="3.5"
-        android:strokeColor="#38BDF8"
+        android:strokeColor="#00F5D4"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
 
